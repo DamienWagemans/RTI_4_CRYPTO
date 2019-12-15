@@ -15,10 +15,12 @@ import divers.Persistance_Properties;
 import java.io.IOException;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.Date;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.swing.JOptionPane;
+import security_facility.digest_facility;
 
 /**
  *
@@ -268,11 +270,18 @@ public class Login_Client extends javax.swing.JFrame {
         Login log;
         RequeteCONTROLID req;
         ReponseCONTROLID rep;
+        
+
         try{
             if(username.equals("") || password.equals(""))
                 throw new Exception("CV");
-            log = new Login(username, password);
-            req = new RequeteCONTROLID(RequeteCONTROLID.LOGIN, log);
+            
+            //ici, je crée un objet digest qui contient le mot de pass, usernmame, l'heure, et un nombre aléatoire
+            //j'utilise la methode DIGEST de la class disgest facility, qui fait faire un hash de tout ca 
+            // et place ce hash de un tableau de byte. Le mdp va ensuite etre supprimé pour ne pas l'envoyer sur le reseau
+            digest_facility digest = new digest_facility(username, password, (new Date()).getTime(),Math.random());
+            
+            req = new RequeteCONTROLID(RequeteCONTROLID.LOGIN, digest);
             
             req.EnvoieRequete(cliSock); 
             rep = new ReponseCONTROLID();
