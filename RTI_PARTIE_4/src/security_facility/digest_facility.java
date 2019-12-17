@@ -7,6 +7,7 @@ import java.io.Serializable;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
+import java.security.Security;
 
 public class digest_facility implements Serializable
 {
@@ -16,13 +17,15 @@ public class digest_facility implements Serializable
     private double random;
     private byte[] message;
 
-    public void Digest()
+    public void Digest() throws IOException
     {
         try 
         {
+            Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
             MessageDigest md = MessageDigest.getInstance("SHA-1", "BC");
             md.update(mdp.getBytes());
-
+            md.update(user.getBytes());
+                
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             DataOutputStream dos = new DataOutputStream(baos);
             dos.writeLong(time);
@@ -32,10 +35,13 @@ public class digest_facility implements Serializable
             message = md.digest();
             mdp =null;
                     } 
-        catch (NoSuchAlgorithmException | NoSuchProviderException | IOException ex) 
+        catch (NoSuchAlgorithmException | NoSuchProviderException ex) 
         {
             System.out.println("Erreur algorithm digest : " + ex);
         } 
+    }
+
+    public digest_facility() {
     }
     
     public digest_facility (String user, String mdp,long time,double random)
@@ -45,13 +51,45 @@ public class digest_facility implements Serializable
         this.time = time;
         this.random = random;
     }
+
+    public void setMdp(String mdp) {
+        this.mdp = mdp;
+    }
+
+    public void setUser(String user) {
+        this.user = user;
+    }
+
+    public void setTime(long time) {
+        this.time = time;
+    }
+
+    public void setRandom(double random) {
+        this.random = random;
+    }
+
+    public void setMessage(byte[] message) {
+        this.message = message;
+    }
     
     public digest_facility(digest_facility d, String mdp)
     {
         this.mdp = mdp;
+        this.user = d.user;
         this.time = d.getTime();
         this.random = d.getRandom();
+        this.message = d.getMessage();
     }
+    
+    public digest_facility(digest_facility d)
+    {
+        this.mdp = null;
+        this.time = d.getTime();
+        this.random = d.getRandom();
+        this.user = d.user;
+        this.message = d.getMessage();
+    }
+
 
     public String getMdp() {
         return mdp;

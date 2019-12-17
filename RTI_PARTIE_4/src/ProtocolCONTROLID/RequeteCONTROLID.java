@@ -6,10 +6,10 @@
 package ProtocolCONTROLID;
 
 import ClassesCONTROLID.Voiture;
-import ClassesCONTROLID.Login;
 import ClassesCONTROLID.Voyageur;
 import interface_req_rep.Requete;
 import database.*;
+import divers.Config_Applic;
 import static divers.Config_Applic.pathLogin;
 import divers.Persistance_Properties;
 import java.io.IOException;
@@ -17,12 +17,20 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.net.Socket;
+import java.security.MessageDigest;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.security.cert.CertificateException;
 import java.sql.*;
 import java.util.Properties;
+import java.util.Vector;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import requeteVERIFID.Reponse_VERIFID;
 import requeteVERIFID.Requete_VERIFID;
+import security_facility.asymetrique_facility;
+import security_facility.digest_facility;
+import security_facility.signature_facility;
 /**
  *
  * @author Dos Santos
@@ -42,17 +50,54 @@ public class RequeteCONTROLID implements Requete , Serializable{
     private Object classe = null;
     private Properties myProperties;
     
-     public RequeteCONTROLID() 
+    private PublicKey PublicKey_Client_Frontiere = null;
+    private PrivateKey PrivateKey_Serveur_National = null;
+    private PublicKey PublicKey_Serveur_International = null;
+    
+    public byte [] data = null;
+    
+    public RequeteCONTROLID() throws CertificateException 
     {
         myProperties = Persistance_Properties.LoadProp(pathLogin);
         setTypeRequete(0); 
         setObjectClasse(null); 
+        chargement_cle();
     }
-    public RequeteCONTROLID(int t, Object classe) 
+    public RequeteCONTROLID(int t, Object classe) throws CertificateException 
     {
         myProperties = Persistance_Properties.LoadProp(pathLogin);
         setTypeRequete(t); 
         setObjectClasse(classe); 
+        chargement_cle();
+    }
+    
+    public RequeteCONTROLID(int t, Object classe, byte [] b) throws CertificateException 
+    {
+        myProperties = Persistance_Properties.LoadProp(pathLogin);
+        setTypeRequete(t); 
+        setObjectClasse(classe);
+        data = b;
+        chargement_cle();
+    }
+    
+    
+    public void chargement_cle() throws CertificateException 
+    {
+        //crypto
+        //je dois recuperer les differentes cle dans les keystore
+        Properties key = Persistance_Properties.LoadProp(Config_Applic.pathKEYstore_Serveur_National);
+        PublicKey_Client_Frontiere = asymetrique_facility.get_cle_publique_asymetrique(key.getProperty("type_keystore"), key.getProperty("chemin_keystore"), key.getProperty("mdp_keystore"),key.getProperty("nom_certificat_client_frontiere"));
+        PrivateKey_Serveur_National = asymetrique_facility.get_cle_privee_asymetrique(key.getProperty("type_keystore"),key.getProperty("chemin_keystore"), key.getProperty("mdp_keystore"), key.getProperty("name"), key.getProperty("mdp_keystore"));
+        PublicKey_Serveur_International = asymetrique_facility.get_cle_publique_asymetrique(key.getProperty("type_keystore"), key.getProperty("chemin_keystore"), key.getProperty("mdp_keystore"),key.getProperty("nom_certificat_serveur_international"));
+    
+    }
+
+    public byte[] getData() {
+        return data;
+    }
+
+    public void setData(byte[] data) {
+        this.data = data;
     }
 
     
@@ -71,12 +116,19 @@ public class RequeteCONTROLID implements Requete , Serializable{
         return new Runnable() 
         {
             public void run() {
-                TraitementRequete(s,Sock_internat, instruc);
+                try 
+                {
+                    TraitementRequete(s,Sock_internat, instruc);
+                } 
+                catch (CertificateException ex) 
+                {
+                    Logger.getLogger(RequeteCONTROLID.class.getName()).log(Level.SEVERE, null, ex);
+                }
             }
         };
     }
     
-    public void TraitementRequete(Socket s, Socket Sock_internat, Statement instruct) 
+    public void TraitementRequete(Socket s, Socket Sock_internat, Statement instruct) throws CertificateException 
     {
         int Login = 0;
         try 
@@ -117,65 +169,76 @@ public class RequeteCONTROLID implements Requete , Serializable{
     }
     
     
-    public int TraiterRequeteLogin(Socket sock, Statement instruc) throws IOException
+    public int TraiterRequeteLogin(Socket sock, Statement instruc) throws IOException, CertificateException
     {
-        
+        //ici je recupere l'objet digest qui l'username, le nombre aléatoire, et l'heure. Je vais recuperper
+        // le mot de pass par rapoort a l'usernamet et je fais un hash de tout ca.
+        // je compare ensuite les deux !
         RequeteCONTROLID req = new RequeteCONTROLID();
-        Login log = new Login((Login)getObjectClasse());
+        digest_facility digest_recu = new digest_facility((digest_facility)getObjectClasse());
+        
+        
         String adresseDistante = sock.getRemoteSocketAddress().toString(); 
         System.out.println("Début de traiteRequete : adresse distante = " + adresseDistante);
-        String pass = myProperties.getProperty(log.getUsername());
-        
+        //je recupere le mot de pass correspont au username
+        String pass = myProperties.getProperty(digest_recu.getUser());
         ReponseCONTROLID rep;
         if(pass != null){
-            rep = new ReponseCONTROLID(ReponseCONTROLID.LOGIN_OK, null);
-            System.out.println(adresseDistante+" / User "+ log.getUsername() + " : Login OK / "  +Thread.currentThread().getName());
-            rep.EnvoieReponse(sock);
-            return 1;
+            //si l'username existe
+            //je recrée un nouveau digest pour pouvoir le recalculé et ensuite le comparer
+            digest_facility digest_recalcule = new digest_facility(digest_recu, pass);
+            
+            System.out.println("calcul du digest");
+            digest_recalcule.Digest();
+            
+            //comparaison des deux digest
+            if(MessageDigest.isEqual(digest_recu.getMessage(), digest_recalcule.getMessage()))
+            {
+                rep = new ReponseCONTROLID(ReponseCONTROLID.LOGIN_OK, null);
+                rep.EnvoieReponse(sock);
+                return 1;
+            }
+            else
+            {
+                rep = new ReponseCONTROLID(ReponseCONTROLID.LOGIN_FAIL, null);
+                rep.EnvoieReponse(sock);
+                return 0;
+            }
         }    
         else
         {
             rep = new ReponseCONTROLID(ReponseCONTROLID.LOGIN_FAIL, null);
-            System.out.println(adresseDistante+" / User "+ log.getUsername() + " : Bad Login  / " +Thread.currentThread().getName());
+            System.out.println(adresseDistante+" / User "+ digest_recu.getUser() + " : Bad Login  / " +Thread.currentThread().getName());
             rep.EnvoieReponse(sock);
-            return -1;
+            return 0;
         }
 
     }
     
     public void verif_voyageur(Socket sock, Socket sock_internat, Statement instruc) throws IOException, SQLException, ClassNotFoundException {
-        String adresseDistante = sock.getRemoteSocketAddress().toString(); 
         Voyageur voyageur = new Voyageur((Voyageur)this.getObjectClasse());
         ReponseCONTROLID rep = new ReponseCONTROLID(ReponseCONTROLID.VOYAGEUR_FAIL, null);
         facility SqlInstruct  = new facility();
         //je verifie l'immatriculation dans BD_REGNAT, si elle n'exite pas ici, j'envoi la requete a serveur reg internat 
         ResultSet rs2 = SqlInstruct.SelectAllRowFromTable("PERSONNE", instruc);
-        System.out.println("Voici le numero de registre a trouver  a trouver : " + voyageur.getN_REG());
         int find =0;
         while (rs2.next())
         {
-            System.out.println("Ce que j'ai : " + voyageur.getN_REG()+ "//" + voyageur.getN_REG().length());
-            System.out.println("Dans la db : " + rs2.getString("N_REG_NAT") + "//" + rs2.getString("N_REG_NAT"));
             if(rs2.getString("N_REG_NAT").equals(voyageur.getN_REG()) )
             {
-                System.out.println("Personne trouvée !");
                 find = 1;
                 if(rs2.getString("PERMIS_DE_CONDUIRE").equals("O"))
                 {
                     System.out.println("Il a un permis");
                     voyageur.setPermis(true);
                 }
-                else
-                {
-                    voyageur.setPermis(false);
-                }
+                else {voyageur.setPermis(false);}
                 break;
             }
         }
         if(find == 1)
         {
             //la personne a été trouvée, pas besopin de revifier dans le serveur international
-            System.out.println("Réponse envoyée au client");
             rep.setObjectClasse(voyageur);
             rep.EnvoieReponse(sock);
         } 
@@ -200,55 +263,80 @@ public class RequeteCONTROLID implements Requete , Serializable{
     public void verif_immatriculation(Socket sock, Socket sock_internat, Statement instruc) throws SQLException, IOException, ClassNotFoundException
     {
         Voiture voiture = new Voiture((Voiture)this.getObjectClasse());
-        ReponseCONTROLID rep = new ReponseCONTROLID(ReponseCONTROLID.IMMAT_FAIL, null);
-        facility SqlInstruct  = new facility();
-        //je verifie l'immatriculation dans BD_REGNAT, si elle n'exite pas ici, j'envoi la requete a serveur reg internat 
-        ResultSet rs2 = SqlInstruct.SelectAllRowFromTable("VOITURE", instruc);
-        System.out.println("Voici l'immatriculation a trouver : " + voiture.getImmatriculation());
-        int find =0;
-        while (rs2.next())
+        //je verifie la signature en donnant en parametre le plaque d'immatriculation car c'est ce qui avait été envoyé a l'envoi,
+        // clé publique nbecassaire pour le decryptage, this.getData c'est la signature qui a été générée par client frontiere
+
+        if (signature_facility.VerifierSignature(PublicKey_Client_Frontiere, voiture.getImmatriculation(), this.getData()) == true)
         {
-            System.out.println("dans la db : " + rs2.getString("IMMATRICULATION"));
-            if(rs2.getString("IMMATRICULATION").equals(voiture.getImmatriculation()) )
+            ReponseCONTROLID rep = new ReponseCONTROLID(ReponseCONTROLID.IMMAT_FAIL, null);
+            facility SqlInstruct  = new facility();
+            //je verifie l'immatriculation dans BD_REGNAT, si elle n'exite pas ici, j'envoi la requete a serveur reg internat 
+            ResultSet rs2 = SqlInstruct.SelectAllRowFromTable("VOITURE", instruc);
+            int find =0;
+            while (rs2.next())
             {
-                System.out.println("Immatriculation trouvée !");
-                find = 1;
-                if(rs2.getString("VOLEE").equals("O") || rs2.getString("ASSURANCE").equals("N")|| rs2.getString("CONTROLE_TECHNIQUE").equals("N"))
+                if(rs2.getString("IMMATRICULATION").equals(voiture.getImmatriculation()) )
                 {
-                    System.out.println("Pas en règle");
-                    rep.setTypeRequete(ReponseCONTROLID.IMMAT_FAIL);
-                    //voiture pas en ordre, controle necessaire..
-                    voiture.setEtat("CONTROLE");
+                    find = 1;
+                    if(rs2.getString("VOLEE").equals("O") || rs2.getString("ASSURANCE").equals("N")|| rs2.getString("CONTROLE_TECHNIQUE").equals("N"))
+                    {
+                        System.out.println("Pas en règle");
+                        rep.setTypeRequete(ReponseCONTROLID.IMMAT_FAIL);
+                        //voiture pas en ordre, controle necessaire..
+                        voiture.setEtat("CONTROLE");
+                    }
+                    else
+                    {
+                        System.out.println("En règle");
+                        rep.setTypeRequete(ReponseCONTROLID.IMMAT_OK);
+                        voiture.setEtat("OK");
+                    }
+                    break;
+                }
+            }
+            if(find == 1)
+            {
+                //l'immatriculation a été trouvée, pas besopin de revifier dans le serveur international
+                //je dois signer ma reponse pour la renvoyé au client frontiere
+                System.out.println("Réponse envoyée au client");
+                rep = new ReponseCONTROLID(ReponseCONTROLID.IMMAT_OK, voiture,signature_facility.signer(PrivateKey_Serveur_National, voiture.getImmatriculation()));
+                rep.EnvoieReponse(sock);
+            } 
+            else
+            {
+                System.out.println("Pas trouvée, je demande au serveur international");
+                //crypto : de nouveau, je crée une requete, contenant la voiture et la signature basée sur la plaque d'immatriculation
+                // je signe avec ma clé privée, l'autre verifie ma signature avec ma clef publique
+                Requete_VERIFID req_internat = new Requete_VERIFID(Requete_VERIFID.VERIF_IMMATRICULATION,voiture,signature_facility.signer(PrivateKey_Serveur_National, voiture.getImmatriculation()) );
+                
+                req_internat.EnvoieRequete(sock_internat);
+                System.out.println("Envoi de la requete au serveur internat");
+                Reponse_VERIFID rep_internat = new Reponse_VERIFID();
+                rep_internat.RecevoirRequete(sock_internat);
+                //je recupere la reponse du serveur internat et je la renvoi au client
+                voiture = new Voiture((Voiture)rep_internat.getClasse());
+                if (signature_facility.VerifierSignature(PublicKey_Serveur_International, voiture.getImmatriculation(), rep_internat.getData()))
+                {
+                    rep = new ReponseCONTROLID(rep_internat.getType(), voiture, signature_facility.signer(PrivateKey_Serveur_National, voiture.getImmatriculation()));
+                    rep.EnvoieReponse(sock);
                 }
                 else
                 {
-                    System.out.println("En règle");
-                    rep.setTypeRequete(ReponseCONTROLID.IMMAT_OK);
-                    voiture.setEtat("OK");
-                }
-                break;
+                    //signature invalide..
+                    Voiture v = new Voiture("SIGNATURE");
+                    rep = new ReponseCONTROLID(ReponseCONTROLID.IMMAT_FAIL, voiture, signature_facility.signer(PrivateKey_Serveur_National, voiture.getImmatriculation()));
+                    rep.EnvoieReponse(sock);
+                } 
+                
+
             }
         }
-        if(find == 1)
-        {
-            //l'immatriculation a été trouvée, pas besopin de revifier dans le serveur international
-            System.out.println("Réponse envoyée au client");
-            rep.setObjectClasse(voiture);
-            rep.EnvoieReponse(sock);
-        } 
         else
         {
-            System.out.println("Pas trouvée, je demande au serveur international");
-            Requete_VERIFID req_internat = new Requete_VERIFID(Requete_VERIFID.VERIF_IMMATRICULATION,voiture);
-            req_internat.EnvoieRequete(sock_internat);
-            System.out.println("Envoi de la requete au serveur internat");
-            Reponse_VERIFID rep_internat = new Reponse_VERIFID();
-            rep_internat.RecevoirRequete(sock_internat);
-            //je recupere la reponse du serveur internat et je la renvoi au client
-            rep.setObjectClasse(rep_internat.getClasse());
-            rep.setTypeRequete(rep_internat.getType());
+            System.out.println("Je passe directement dans l'invalidité !");
+            Voiture v = new Voiture("SIGNATURE");
+            ReponseCONTROLID rep = new ReponseCONTROLID(ReponseCONTROLID.IMMAT_FAIL, voiture, signature_facility.signer(PrivateKey_Serveur_National, voiture.getImmatriculation()));
             rep.EnvoieReponse(sock);
-
         }
     }
     
@@ -262,7 +350,7 @@ public class RequeteCONTROLID implements Requete , Serializable{
         oos.flush();
     }
     
-    public void RecevoirRequete(Socket CSocket) throws IOException, ClassNotFoundException
+    public void RecevoirRequete(Socket CSocket) throws IOException, ClassNotFoundException, CertificateException
     { 
         ObjectInputStream ois=null; 
         RequeteCONTROLID temp = new RequeteCONTROLID();
@@ -271,6 +359,7 @@ public class RequeteCONTROLID implements Requete , Serializable{
         temp= (RequeteCONTROLID)ois.readObject();
         this.setTypeRequete(temp.getTypeRequete());
         this.setObjectClasse(temp.getObjectClasse());
+        this.setData(temp.getData());
         System.out.println("Requete lue par le serveur, instance de " + this.getClass().getName());
     }
     

@@ -25,24 +25,37 @@ public class ReponseCONTROLID implements Reponse, Serializable{
     public static int LOGIN_FAIL = 501;
     public static int IMMAT_FAIL = 502;
     public static int VOYAGEUR_FAIL = 503;
-
-
-
-    
-    
-    
     
     private int type; 
     private Object classe;
     
+    private byte [] data = null;
+    
     public ReponseCONTROLID(int c, Object classe) {
         setTypeRequete(c); 
         setObjectClasse(classe); 
+        data = null;
     }
+    
+    public ReponseCONTROLID(int c, Object classe, byte[] b) {
+        setTypeRequete(c); 
+        setObjectClasse(classe);
+        setData(b);
+    }
+    
+    public byte[] getData() {
+        return data;
+    }
+
+    public void setData(byte[] data) {
+        this.data = data;
+    }
+
     
     public ReponseCONTROLID() {
         setTypeRequete(0); 
         setObjectClasse(null); 
+        data = null;
     }
     
     public int getTypeRequete() { return type; }
@@ -68,6 +81,7 @@ public class ReponseCONTROLID implements Reponse, Serializable{
         temp = (ReponseCONTROLID)ois.readObject();
         this.setObjectClasse(temp.getObjectClasse());
         this.setTypeRequete(temp.getTypeRequete());
+        this.setData(temp.getData());
         System.out.println(" *** Reponse recue : " + this.getTypeRequete());
 
     }

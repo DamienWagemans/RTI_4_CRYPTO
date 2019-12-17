@@ -3,24 +3,30 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package applic_frontiere;
+package Client_Frontiere;
 
 import ClassesCONTROLID.Voiture;
-import ClassesCONTROLID.Login;
 import ClassesCONTROLID.Voyageur;
 import ProtocolCONTROLID.ReponseCONTROLID;
 import ProtocolCONTROLID.RequeteCONTROLID;
+import divers.Config_Applic;
 import static divers.Config_Applic.pathConfig;
 import divers.Persistance_Properties;
 import java.io.IOException;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.security.cert.CertificateException;
 import java.util.Date;
 import java.util.Properties;
+import java.util.Vector;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.swing.JOptionPane;
+import security_facility.asymetrique_facility;
 import security_facility.digest_facility;
+import security_facility.signature_facility;
 
 /**
  *
@@ -33,12 +39,29 @@ public class Login_Client extends javax.swing.JFrame {
      */
     private Properties myProperties;
     private Socket cliSock = null;
+    //permis de savoir si le vehicule est en regle pour proceder on controle des passagers
     private boolean vehicule_ok = false;
+    //apres le controle OK du vehicule, un handshake est effectué pour la générer les clefs symétrique
+    //afin de ne pas le faire plusieurs fois, j'utilise ce boolean
+    private boolean handshake_done = false;
     
-    public Login_Client() {
+    
+    //porte bien son nom, je possede ma propre clef privée ainsi que la cle publique du serveur avec lequel je communique
+    //voir constructeur pour la recuperation du keystore contenant ces clefs
+    private PrivateKey PrivateKey_Client_Frontiere = null;
+    private PublicKey PublicKey_Serveur_National = null;
+
+    public PrivateKey getPrivateKey_Client_Frontiere() {
+        return PrivateKey_Client_Frontiere;
+    }
+
+    public void setPrivateKey_Client_Frontiere(PrivateKey PrivateKey_Client_Frontiere) {
+        this.PrivateKey_Client_Frontiere = PrivateKey_Client_Frontiere;
+    }
+    
+    
+    public Login_Client() throws CertificateException {
         initComponents();
-        
-        
         
         UsernameLogin.setText("GrosZZ");
         PasswordLogin.setText("Vilvens");
@@ -51,7 +74,13 @@ public class Login_Client extends javax.swing.JFrame {
         UsernameLogin.setEnabled(false);
         PasswordLogin.setEnabled(false);
         jButton1.setEnabled(false);
-
+        
+        //crypto
+        //je vais devoir recuperer ma cle privée pour signer mes messages, 
+        //les infos concernant celle-ci vons être mise dans fichier properties
+        Properties key = Persistance_Properties.LoadProp(Config_Applic.pathKEYstore_Client_Frontiere);
+        PrivateKey_Client_Frontiere = asymetrique_facility.get_cle_privee_asymetrique(key.getProperty("type_keystore"),key.getProperty("chemin_keystore"), key.getProperty("mdp_keystore"), key.getProperty("name"), key.getProperty("mdp_keystore"));
+        PublicKey_Serveur_National = asymetrique_facility.get_cle_publique_asymetrique(key.getProperty("type_keystore"), key.getProperty("chemin_keystore"), key.getProperty("mdp_keystore"),key.getProperty("nom_certificat_serveur_national"));
     }
     /**
      * This method is called from within the constructor to initialize the form.
@@ -267,7 +296,6 @@ public class Login_Client extends javax.swing.JFrame {
         // TODO add your handling code here:
         String username = UsernameLogin.getText();
         String password = PasswordLogin.getText();
-        Login log;
         RequeteCONTROLID req;
         ReponseCONTROLID rep;
         
@@ -279,7 +307,9 @@ public class Login_Client extends javax.swing.JFrame {
             //ici, je crée un objet digest qui contient le mot de pass, usernmame, l'heure, et un nombre aléatoire
             //j'utilise la methode DIGEST de la class disgest facility, qui fait faire un hash de tout ca 
             // et place ce hash de un tableau de byte. Le mdp va ensuite etre supprimé pour ne pas l'envoyer sur le reseau
+            
             digest_facility digest = new digest_facility(username, password, (new Date()).getTime(),Math.random());
+            digest.Digest();
             
             req = new RequeteCONTROLID(RequeteCONTROLID.LOGIN, digest);
             
@@ -311,14 +341,9 @@ public class Login_Client extends javax.swing.JFrame {
         // TODO add your handling code here:
         try
         {
-            //gérer exception
-            
             String adresse  = IpServeurTF.getText();
             int port = Integer.parseInt(PortTF.getText());
             cliSock = new Socket(adresse, port);
-            
-            //oos = new ObjectOutputStream(cliSock.getOutputStream());
-            //ois = new ObjectInputStream(cliSock.getInputStream());
             
             System.out.println(cliSock.getInetAddress().toString());
             JOptionPane.showMessageDialog(null, "Connexion etablie avec succes", "Connexion", JOptionPane.PLAIN_MESSAGE);
@@ -350,44 +375,65 @@ public class Login_Client extends javax.swing.JFrame {
         String mot = (String)retour[0];
 
         try{
-
+            //je cree un objet requete qui contient l'objet voiture ainsi que la signature basée sur le plaque d'immmatriculation
+            //en gros je fais un hash sha-1 avec une clé privée RSA, je m'assure que la personne en face 
+            //a bien ma clé publique. voir bouquin p245 signature electronique
             Voiture voiture = new Voiture(mot);
-                    
-            req = new RequeteCONTROLID(RequeteCONTROLID.VERIF_IMMATRICULATION, voiture);
+            req = new RequeteCONTROLID(RequeteCONTROLID.VERIF_IMMATRICULATION, voiture, signature_facility.signer(PrivateKey_Client_Frontiere, voiture.getImmatriculation()));
             req.EnvoieRequete(cliSock);
-            
             rep = new ReponseCONTROLID();
             rep.RecevoirReponse(cliSock);
-            
-            
-            
-            
-            if(rep.getTypeRequete() == ReponseCONTROLID.IMMAT_FAIL)
+
+            voiture = (Voiture)rep.getObjectClasse();
+            if (signature_facility.VerifierSignature(PublicKey_Serveur_National, voiture.getImmatriculation(), rep.getData()))
             {
-               voiture = (Voiture)rep.getObjectClasse();
-               if(voiture.getEtat().equals("CONTROLE"))
-               {
-                   JOptionPane.showMessageDialog(null, "Controle nécessaire, la voiture n'est pas en règle  !!", "Controle!", JOptionPane.ERROR_MESSAGE);
-               }
-               if(voiture.getEtat().equals("INCONNU"))
-               {
-                   JOptionPane.showMessageDialog(null, "Cette plaque n'existe pas  !!", "Inconnu!", JOptionPane.ERROR_MESSAGE);
-               }
-               
+                System.out.println("Signature du serveur national ok !");
+                if(rep.getTypeRequete() == ReponseCONTROLID.IMMAT_FAIL)
+                {
+                   System.out.println("Etat de la voiture: "+ voiture.getEtat());
+                   if(voiture.getEtat().equals("CONTROLE"))
+                   {
+                       JOptionPane.showMessageDialog(null, "Controle nécessaire, la voiture n'est pas en règle  !!", "Controle!", JOptionPane.ERROR_MESSAGE);
+                   }
+                   if(voiture.getEtat().equals("INCONNU"))
+                   {
+                       JOptionPane.showMessageDialog(null, "Cette plaque n'existe pas  !!", "Inconnu!", JOptionPane.ERROR_MESSAGE);
+                   }
+                   if(voiture.getEtat().equals("SIGNATURE"))
+                   {
+                       JOptionPane.showMessageDialog(null, "Erreur de signature electron", "Inconnu!", JOptionPane.ERROR_MESSAGE);
+                   }
+
+                }
+                else{
+                    JOptionPane.showMessageDialog(null, "Voiture en règle, vous pouvez proceder aux controle des passagers", "OK", JOptionPane.INFORMATION_MESSAGE);
+                    jButton_verif_passager.setEnabled(true);
+                    
+                    vehicule_ok = true;
+                    //une foios qu'un vehicule est 
+                    if(handshake_done == false)
+                    {
+                        handshake();
+                        handshake_done = true;
+                    }
+                }
             }
-            else{
-                JOptionPane.showMessageDialog(null, "Voiture en règle, vous pouvez proceder aux controle des passagers", "OK", JOptionPane.INFORMATION_MESSAGE);
-                jButton_verif_passager.setEnabled(true);
-                vehicule_ok = true;
+            else
+            {
+                JOptionPane.showMessageDialog(null, "Erreur de signature electronique", "Inconnu!", JOptionPane.ERROR_MESSAGE);
             }
         }catch(IOException e){
             System.err.println("Erreur ? [" + e.getMessage() + "]"); 
         }catch(ClassNotFoundException e){
             System.out.println("--- erreur sur la classe = " + e.getMessage());
+        } catch (CertificateException ex) {
+            Logger.getLogger(Login_Client.class.getName()).log(Level.SEVERE, null, ex);
         }
        
     }//GEN-LAST:event_Button_Verif_immatActionPerformed
 
+    
+    
     private void jButton_quitterActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton_quitterActionPerformed
         try {
             cliSock.close();
@@ -453,6 +499,8 @@ public class Login_Client extends javax.swing.JFrame {
                 Logger.getLogger(Login_Client.class.getName()).log(Level.SEVERE, null, ex);
             } catch (ClassNotFoundException ex) {
                 Logger.getLogger(Login_Client.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (CertificateException ex) {
+                Logger.getLogger(Login_Client.class.getName()).log(Level.SEVERE, null, ex);
             }
             
         }
@@ -462,6 +510,15 @@ public class Login_Client extends javax.swing.JFrame {
         }
     }//GEN-LAST:event_jButton_verif_passagerActionPerformed
 
+    
+    //crypto realisiation du handshake !
+    
+    public void handshake()
+    {
+        
+    }
+   
+    
     /**
      * @param args the command line arguments
      */
@@ -488,11 +545,16 @@ public class Login_Client extends javax.swing.JFrame {
             java.util.logging.Logger.getLogger(Login_Client.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
         }
         //</editor-fold>
+        //</editor-fold>
 
         /* Create and display the form */
         java.awt.EventQueue.invokeLater(new Runnable() {
             public void run() {
-                new Login_Client().setVisible(true);
+                try {
+                    new Login_Client().setVisible(true);
+                } catch (CertificateException ex) {
+                    Logger.getLogger(Login_Client.class.getName()).log(Level.SEVERE, null, ex);
+                }
             }
         });
     }

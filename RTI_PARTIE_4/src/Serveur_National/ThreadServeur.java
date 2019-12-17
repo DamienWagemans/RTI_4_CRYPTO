@@ -3,7 +3,7 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package applic_frontiere.serveurpoolthreads;
+package Serveur_National;
 
 import ProtocolCONTROLID.RequeteCONTROLID;
 import interface_req_rep.Requete;
@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.security.cert.CertificateException;
 import java.sql.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -24,7 +25,7 @@ public class ThreadServeur extends Thread{
     private SourceTaches tachesAExecuter;
     private ServerSocket SSocket = null;
     private Socket socket_serv = null;
-    private RequeteCONTROLID req = new RequeteCONTROLID();
+    private RequeteCONTROLID req;
     private Statement instruc;
 
     public ServerSocket getSSocket() {
@@ -52,8 +53,9 @@ public class ThreadServeur extends Thread{
     }
     
     
-    public ThreadServeur(int p, int nbr_c, SourceTaches st, Socket socket_c) 
+    public ThreadServeur(int p, int nbr_c, SourceTaches st, Socket socket_c) throws CertificateException 
     {
+        this.req = new RequeteCONTROLID();
         nbr_client = nbr_c;
         port = p; 
         tachesAExecuter = st; 

@@ -9,6 +9,7 @@ public class signature_facility
         byte[] sb = null;
         try 
         {
+            System.out.println("Message a signer : " + msg);
             byte[] b = msg.getBytes();
             
             Signature s = Signature.getInstance("SHA1withRSA", "BC");

@@ -14,6 +14,10 @@ package divers;
     //ceci sera valable en fonctio de l'os utilisé grace aux "system.getProperty"
     
 
+    //crypto
+    public static String pathKEYstore_Client_Frontiere = (rep + sep + "file" + sep + "client_frontiere_keystore.properties");
+    public static String pathKEYstore_Serveur_National = (rep + sep + "file" + sep + "serveur_national_keystore.properties");
+    public static String pathKEYstore_Serveur_International = (rep + sep + "file" + sep + "serveur_international_keystore.properties");
     
 
 }

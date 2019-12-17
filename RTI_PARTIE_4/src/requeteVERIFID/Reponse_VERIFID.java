@@ -28,18 +28,39 @@ public class Reponse_VERIFID implements Serializable{
     public static int IMMAT_FAIL = 502;
     public static int VOYAGEUR_FAIL = 503;
     
+    private byte [] Data;
+   
+    
 
     public Reponse_VERIFID () 
     {
         setType(0); 
         setClasse(null); 
+        setData(null);
     }
     public Reponse_VERIFID (int t, Object classe) 
     {
         setType(t); 
         setClasse(classe); 
+        setData(null);
     }
 
+    public Reponse_VERIFID (int t, Object classe, byte [] b) 
+    {
+        setType(t); 
+        setClasse(classe); 
+        setData(b);
+    }
+
+    public byte[] getData() {
+        return Data;
+    }
+
+    public void setData(byte[] Data) {
+        this.Data = Data;
+    }
+    
+        
     public int getType() {
         return type;
     }
@@ -74,6 +95,7 @@ public class Reponse_VERIFID implements Serializable{
         temp= (Reponse_VERIFID)ois.readObject();
         this.setType(temp.getType());
         this.setClasse(temp.getClasse());
+        this.setData(temp.getData());
         System.out.println("Requete lue par le serveur, instance de " + this.getClass().getName());
     }
 

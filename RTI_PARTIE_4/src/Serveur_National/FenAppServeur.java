@@ -3,14 +3,15 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package applic_frontiere;
+package Serveur_National;
 
-import applic_frontiere.serveurpoolthreads.ListeTaches;
-import applic_frontiere.serveurpoolthreads.ThreadServeur;
+import Serveur_National.ListeTaches;
+import Serveur_National.ThreadServeur;
 import static divers.Config_Applic.pathConfig;
 import divers.Persistance_Properties;
 import java.io.IOException;
 import java.net.Socket;
+import java.security.cert.CertificateException;
 import java.sql.SQLException;
 import java.util.Properties;
 import java.util.logging.Level;
@@ -219,6 +220,8 @@ public class FenAppServeur extends javax.swing.JFrame {
             ts.start();
         } catch (IOException ex) {
             JOptionPane.showMessageDialog(null, "Connexion au serveur carte impossible", "Serveur carte erreur", JOptionPane.ERROR_MESSAGE);
+        } catch (CertificateException ex) {
+            Logger.getLogger(FenAppServeur.class.getName()).log(Level.SEVERE, null, ex);
         }
         
     }//GEN-LAST:event_jButton_startActionPerformed

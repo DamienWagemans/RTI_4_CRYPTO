@@ -25,16 +25,34 @@ public class Requete_VERIFID implements Serializable{
     
     public static int VERIF_IMMATRICULATION = 1;
     public static int VERIF_VOYAGEUR = 2;
+    
+    private byte [] data;
+
+    public byte[] getData() {
+        return data;
+    }
+
+    public void setData(byte[] data) {
+        this.data = data;
+    }
 
     public Requete_VERIFID () 
     {
         setType(0); 
         setClasse(null); 
+        setData(null);
     }
     public Requete_VERIFID (int t, Object classe) 
     {
         setType(t); 
+        setClasse(classe);
+        setData(null);
+    }
+    public Requete_VERIFID (int t, Object classe, byte [] b) 
+    {
+        setType(t); 
         setClasse(classe); 
+        setData(b);
     }
 
     public int getType() {
@@ -71,6 +89,7 @@ public class Requete_VERIFID implements Serializable{
         temp= (Requete_VERIFID)ois.readObject();
         this.setType(temp.getType());
         this.setClasse(temp.getClasse());
+        this.setData(temp.getData());
         System.out.println("Requete lue par le serveur, instance de " + this.getClass().getName());
     }
     
