@@ -20,7 +20,7 @@ import sun.security.timestamp.TSRequest;
  *
  * @author damien
  */
-public class Serveur_Carte extends javax.swing.JFrame {
+public class Serveur_International extends javax.swing.JFrame {
     private Properties myProperties;
     private int port;
     private int nbr_client;
@@ -32,7 +32,7 @@ public class Serveur_Carte extends javax.swing.JFrame {
     /**
      * Creates new form FenAppServeur
      */
-    public Serveur_Carte() {
+    public Serveur_International() {
         
         initComponents();        
         myProperties = Persistance_Properties.LoadProp(pathConfig);
@@ -157,9 +157,9 @@ public class Serveur_Carte extends javax.swing.JFrame {
             ts.getSSocket().close();
             ts.getInstruc().close();
         } catch (IOException ex) {
-            Logger.getLogger(Serveur_Carte.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(Serveur_International.class.getName()).log(Level.SEVERE, null, ex);
         } catch (SQLException ex) {
-            Logger.getLogger(Serveur_Carte.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(Serveur_International.class.getName()).log(Level.SEVERE, null, ex);
         }
         setVisible(false);
     }//GEN-LAST:event_jButton_stopActionPerformed
@@ -181,14 +181,18 @@ public class Serveur_Carte extends javax.swing.JFrame {
                 }
             }
         } catch (ClassNotFoundException ex) {
-            java.util.logging.Logger.getLogger(Serveur_Carte.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
+            java.util.logging.Logger.getLogger(Serveur_International.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
         } catch (InstantiationException ex) {
-            java.util.logging.Logger.getLogger(Serveur_Carte.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
+            java.util.logging.Logger.getLogger(Serveur_International.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
         } catch (IllegalAccessException ex) {
-            java.util.logging.Logger.getLogger(Serveur_Carte.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
+            java.util.logging.Logger.getLogger(Serveur_International.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
         } catch (javax.swing.UnsupportedLookAndFeelException ex) {
-            java.util.logging.Logger.getLogger(Serveur_Carte.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
+            java.util.logging.Logger.getLogger(Serveur_International.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
         }
+        //</editor-fold>
+        //</editor-fold>
+        //</editor-fold>
+        //</editor-fold>
         //</editor-fold>
         //</editor-fold>
         //</editor-fold>
@@ -197,7 +201,7 @@ public class Serveur_Carte extends javax.swing.JFrame {
         /* Create and display the form */
         java.awt.EventQueue.invokeLater(new Runnable() {
             public void run() {
-                new Serveur_Carte().setVisible(true);
+                new Serveur_International().setVisible(true);
             }
         });
     }

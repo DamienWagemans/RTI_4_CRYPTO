@@ -26,11 +26,15 @@ import java.util.Properties;
 import java.util.Vector;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 import requeteVERIFID.Reponse_VERIFID;
 import requeteVERIFID.Requete_VERIFID;
 import security_facility.asymetrique_facility;
 import security_facility.digest_facility;
+import security_facility.hmac_facility;
 import security_facility.signature_facility;
+import security_facility.symetrique_facility;
 /**
  *
  * @author Dos Santos
@@ -42,6 +46,7 @@ public class RequeteCONTROLID implements Requete , Serializable{
     public static int LOGIN = 1;
     public static int VERIF_IMMATRICULATION = 2;
     public static int VERIF_VOYAGEUR = 3;
+    public static int HANDSHAKE = 4;
 
     
     public static int STOP = -1;
@@ -54,7 +59,12 @@ public class RequeteCONTROLID implements Requete , Serializable{
     private PrivateKey PrivateKey_Serveur_National = null;
     private PublicKey PublicKey_Serveur_International = null;
     
+    private SecretKey SecretKey_AUTH = null;
+    private SecretKey SecretKey_CYPHER = null;
+    
+    
     public byte [] data = null;
+    public byte [] data_2 = null;
     
     public RequeteCONTROLID() throws CertificateException 
     {
@@ -71,13 +81,42 @@ public class RequeteCONTROLID implements Requete , Serializable{
         chargement_cle();
     }
     
+    public RequeteCONTROLID(int t, byte [] b) throws CertificateException 
+    {
+        myProperties = Persistance_Properties.LoadProp(pathLogin);
+        setTypeRequete(t); 
+        setObjectClasse(null);
+        setData(b);
+        chargement_cle();
+        setData_2(null);
+    }
+    
     public RequeteCONTROLID(int t, Object classe, byte [] b) throws CertificateException 
     {
         myProperties = Persistance_Properties.LoadProp(pathLogin);
         setTypeRequete(t); 
         setObjectClasse(classe);
         data = b;
+        data_2 = null;
         chargement_cle();
+    }
+    public RequeteCONTROLID(int t, Object classe, byte [] b, byte [] b2) throws CertificateException 
+    {
+        myProperties = Persistance_Properties.LoadProp(pathLogin);
+        setTypeRequete(t); 
+        setObjectClasse(classe);
+        data = b;
+        data_2 = b2;
+        
+        chargement_cle();
+    }
+
+    public byte[] getData_2() {
+        return data_2;
+    }
+
+    public void setData_2(byte[] data_2) {
+        this.data_2 = data_2;
     }
     
     
@@ -133,7 +172,6 @@ public class RequeteCONTROLID implements Requete , Serializable{
         int Login = 0;
         try 
         {
-            
             while(this.getTypeRequete() != -1)
             {
                 while (Login == 0)
@@ -141,20 +179,20 @@ public class RequeteCONTROLID implements Requete , Serializable{
                     Login = TraiterRequeteLogin(s, instruct);
                     this.RecevoirRequete(s);
                 }
-                
                 switch(this.getTypeRequete())
                 {
                     case 2:
                         System.out.println("Dans verif immat");
                         verif_immatriculation(s, Sock_internat,instruct);
-                        
                         break;
                     case 3 : 
                         System.out.println("Dans verif voyageur");
                         verif_voyageur(s, Sock_internat, instruct);
                         break;
-
-                      
+                    case 4:
+                        System.out.println("Dans HANDSHAKE");
+                        handshake(s);
+                        break;     
                 }
                 this.RecevoirRequete(s);
 
@@ -216,47 +254,67 @@ public class RequeteCONTROLID implements Requete , Serializable{
     }
     
     public void verif_voyageur(Socket sock, Socket sock_internat, Statement instruc) throws IOException, SQLException, ClassNotFoundException {
-        Voyageur voyageur = new Voyageur((Voyageur)this.getObjectClasse());
-        ReponseCONTROLID rep = new ReponseCONTROLID(ReponseCONTROLID.VOYAGEUR_FAIL, null);
-        facility SqlInstruct  = new facility();
-        //je verifie l'immatriculation dans BD_REGNAT, si elle n'exite pas ici, j'envoi la requete a serveur reg internat 
-        ResultSet rs2 = SqlInstruct.SelectAllRowFromTable("PERSONNE", instruc);
-        int find =0;
-        while (rs2.next())
+        Voyageur voyageur = new Voyageur();
+        //ca c'est le message qui a été crypto par le client
+        byte[] crypted_message = (this.getData());
+        //ca c'est le message crypto qui a été hashé par le client
+        byte[] crypted_message_authenticate_by_client = this.getData_2();
+        //ce qu'on va faire c'est rehasher le message crypto de ce coté ci et voir si il est egal au messahe hashé par le client
+        byte [] crypted_message_authenticate_by_server = hmac_facility.authentification(SecretKey_AUTH, crypted_message);
+        if (MessageDigest.isEqual(crypted_message_authenticate_by_client, crypted_message_authenticate_by_server))
         {
-            if(rs2.getString("N_REG_NAT").equals(voyageur.getN_REG()) )
+            //mtn on va décrypted le message
+            voyageur.byte_to_voyageur(symetrique_facility.decrypte_message(crypted_message, SecretKey_CYPHER));
+            ReponseCONTROLID rep = new ReponseCONTROLID(ReponseCONTROLID.VOYAGEUR_FAIL, null);
+            facility SqlInstruct  = new facility();
+            //je verifie l'immatriculation dans BD_REGNAT, si elle n'exite pas ici, j'envoi la requete a serveur reg internat 
+            ResultSet rs2 = SqlInstruct.SelectAllRowFromTable("PERSONNE", instruc);
+            int find =0;
+            while (rs2.next())
             {
-                find = 1;
-                if(rs2.getString("PERMIS_DE_CONDUIRE").equals("O"))
+                if(rs2.getString("N_REG_NAT").equals(voyageur.getN_REG()) )
                 {
-                    System.out.println("Il a un permis");
-                    voyageur.setPermis(true);
+                    find = 1;
+                    if(rs2.getString("PERMIS_DE_CONDUIRE").equals("O"))
+                    {
+                        System.out.println("Il a un permis");
+                        voyageur.setPermis(true);
+                    }
+                    else {voyageur.setPermis(false);}
+                    break;
                 }
-                else {voyageur.setPermis(false);}
-                break;
+            }
+            if(find == 1)
+            {
+                //la personne a été trouvée, pas besopin de revifier dans le serveur international
+                crypted_message = symetrique_facility.encrypte_message(voyageur.voyageur_to_byte(), SecretKey_CYPHER);
+                rep = new ReponseCONTROLID(ReponseCONTROLID.VOYAGEUR_OK, null, crypted_message, hmac_facility.authentification(SecretKey_AUTH, crypted_message));
+                rep.EnvoieReponse(sock);
+            } 
+            else
+            {
+                System.out.println("Pas trouvée, je demande au serveur international");
+                Requete_VERIFID req_internat = new Requete_VERIFID(Requete_VERIFID.VERIF_VOYAGEUR,voyageur);
+                req_internat.EnvoieRequete(sock_internat);
+                System.out.println("Envoi de la requete au serveur internat");
+                Reponse_VERIFID rep_internat = new Reponse_VERIFID();
+                rep_internat.RecevoirRequete(sock_internat);
+                //je recupere la reponse du serveur internat et je la renvoi au client
+                //je recupere le voyageur
+                voyageur = new Voyageur((Voyageur)rep_internat.getClasse());
+                //je crypte le voyageur
+                crypted_message = symetrique_facility.encrypte_message(voyageur.voyageur_to_byte(), SecretKey_CYPHER);
+                //j'envoi la requete contenant, le type, null car pas utilisé, le voyageur cyrpto, et un mash du voyageur crypté
+                rep = new ReponseCONTROLID(rep_internat.getType(), null, crypted_message, hmac_facility.authentification(SecretKey_AUTH, crypted_message));
+                rep.EnvoieReponse(sock);
             }
         }
-        if(find == 1)
-        {
-            //la personne a été trouvée, pas besopin de revifier dans le serveur international
-            rep.setObjectClasse(voyageur);
-            rep.EnvoieReponse(sock);
-        } 
         else
         {
-            System.out.println("Pas trouvée, je demande au serveur international");
-            Requete_VERIFID req_internat = new Requete_VERIFID(Requete_VERIFID.VERIF_VOYAGEUR,voyageur);
-            req_internat.EnvoieRequete(sock_internat);
-            System.out.println("Envoi de la requete au serveur internat");
-            Reponse_VERIFID rep_internat = new Reponse_VERIFID();
-            rep_internat.RecevoirRequete(sock_internat);
-            //je recupere la reponse du serveur internat et je la renvoi au client
-            rep.setObjectClasse(rep_internat.getClasse());
-            rep.setTypeRequete(rep_internat.getType());
+            ReponseCONTROLID rep = new ReponseCONTROLID(ReponseCONTROLID.VOYAGEUR_AUTH_FAIL, null);
             rep.EnvoieReponse(sock);
-
+            
         }
-        
     }
     
     
@@ -341,6 +399,27 @@ public class RequeteCONTROLID implements Requete , Serializable{
     }
     
     
+    public void handshake(Socket s) throws IOException, ClassNotFoundException, CertificateException
+    {
+        byte[] t = asymetrique_facility.decrypte_message_asymetrique(this.getData(), PrivateKey_Serveur_National);
+        SecretKey_CYPHER = new SecretKeySpec(t, 0, t.length, "DES");      
+        System.out.println("Premiere cle OK");
+
+        this.RecevoirRequete(s);
+        
+        t = asymetrique_facility.decrypte_message_asymetrique(this.getData(), PrivateKey_Serveur_National);
+        SecretKey_AUTH = new SecretKeySpec(t, 0, t.length, "DES");
+        
+        System.err.println("Clé auth " + SecretKey_AUTH);
+        System.err.println("Clé Cypher " + SecretKey_CYPHER);
+        
+        ReponseCONTROLID rep = new ReponseCONTROLID();
+        rep.setTypeRequete(ReponseCONTROLID.HANDSHAKE_OK);
+        rep.EnvoieReponse(s);
+        
+    }
+            
+    
    
     public void EnvoieRequete(Socket cliSocket) throws IOException 
     { 
@@ -360,6 +439,7 @@ public class RequeteCONTROLID implements Requete , Serializable{
         this.setTypeRequete(temp.getTypeRequete());
         this.setObjectClasse(temp.getObjectClasse());
         this.setData(temp.getData());
+        this.setData_2(temp.getData_2());
         System.out.println("Requete lue par le serveur, instance de " + this.getClass().getName());
     }
     

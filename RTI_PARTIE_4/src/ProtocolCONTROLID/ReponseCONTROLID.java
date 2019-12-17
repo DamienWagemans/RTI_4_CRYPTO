@@ -20,27 +20,38 @@ public class ReponseCONTROLID implements Reponse, Serializable{
     public static int LOGIN_OK = 201;
     public static int IMMAT_OK = 202;
     public static int VOYAGEUR_OK = 203;
+    public static int HANDSHAKE_OK = 204;
 
     
     public static int LOGIN_FAIL = 501;
     public static int IMMAT_FAIL = 502;
     public static int VOYAGEUR_FAIL = 503;
+    public static int VOYAGEUR_AUTH_FAIL = 504;
     
     private int type; 
     private Object classe;
     
     private byte [] data = null;
+    private byte [] data_2 = null;
     
     public ReponseCONTROLID(int c, Object classe) {
         setTypeRequete(c); 
         setObjectClasse(classe); 
         data = null;
+        data_2 = null;
     }
     
     public ReponseCONTROLID(int c, Object classe, byte[] b) {
         setTypeRequete(c); 
         setObjectClasse(classe);
         setData(b);
+        setData_2(null);
+    }
+    public ReponseCONTROLID(int c, Object classe, byte[] b, byte [] b2) {
+        setTypeRequete(c); 
+        setObjectClasse(classe);
+        setData(b);
+        setData_2(b2);
     }
     
     public byte[] getData() {
@@ -56,6 +67,14 @@ public class ReponseCONTROLID implements Reponse, Serializable{
         setTypeRequete(0); 
         setObjectClasse(null); 
         data = null;
+    }
+
+    public byte[] getData_2() {
+        return data_2;
+    }
+
+    public void setData_2(byte[] data_2) {
+        this.data_2 = data_2;
     }
     
     public int getTypeRequete() { return type; }
@@ -82,6 +101,7 @@ public class ReponseCONTROLID implements Reponse, Serializable{
         this.setObjectClasse(temp.getObjectClasse());
         this.setTypeRequete(temp.getTypeRequete());
         this.setData(temp.getData());
+        this.setData_2(temp.getData_2());
         System.out.println(" *** Reponse recue : " + this.getTypeRequete());
 
     }

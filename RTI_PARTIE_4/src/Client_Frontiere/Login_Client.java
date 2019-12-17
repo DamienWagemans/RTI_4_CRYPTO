@@ -15,6 +15,7 @@ import divers.Persistance_Properties;
 import java.io.IOException;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.security.MessageDigest;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.CertificateException;
@@ -23,10 +24,13 @@ import java.util.Properties;
 import java.util.Vector;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.crypto.SecretKey;
 import javax.swing.JOptionPane;
 import security_facility.asymetrique_facility;
 import security_facility.digest_facility;
+import security_facility.hmac_facility;
 import security_facility.signature_facility;
+import security_facility.symetrique_facility;
 
 /**
  *
@@ -50,6 +54,14 @@ public class Login_Client extends javax.swing.JFrame {
     //voir constructeur pour la recuperation du keystore contenant ces clefs
     private PrivateKey PrivateKey_Client_Frontiere = null;
     private PublicKey PublicKey_Serveur_National = null;
+    
+    //il s'agit ici de deux clé symétriques, une pour le chiffrement/déchiffrmeent, l'autre pour l'authentification
+    //ces clé sont générée dans le constructeur par defaut et pour les transmettre au client national, on utilise le
+    //chiffre asymétrique. Donc je vais crypter cette cle secret(symetrique) avec la publique de serveur national, 
+    // L'envoyer a server national et lui pourra la dechiffré avec la cle privée
+    //cette phase se trouve la fonction HANDSHAKE
+    private SecretKey SecretKey_AUTH = null;
+    private SecretKey SecretKey_CYPHER = null;
 
     public PrivateKey getPrivateKey_Client_Frontiere() {
         return PrivateKey_Client_Frontiere;
@@ -81,6 +93,9 @@ public class Login_Client extends javax.swing.JFrame {
         Properties key = Persistance_Properties.LoadProp(Config_Applic.pathKEYstore_Client_Frontiere);
         PrivateKey_Client_Frontiere = asymetrique_facility.get_cle_privee_asymetrique(key.getProperty("type_keystore"),key.getProperty("chemin_keystore"), key.getProperty("mdp_keystore"), key.getProperty("name"), key.getProperty("mdp_keystore"));
         PublicKey_Serveur_National = asymetrique_facility.get_cle_publique_asymetrique(key.getProperty("type_keystore"), key.getProperty("chemin_keystore"), key.getProperty("mdp_keystore"),key.getProperty("nom_certificat_serveur_national"));
+    
+        SecretKey_AUTH = symetrique_facility.get_cle_secrete_symetrique();
+        SecretKey_CYPHER = symetrique_facility.get_cle_secrete_symetrique();
     }
     /**
      * This method is called from within the constructor to initialize the form.
@@ -455,40 +470,64 @@ public class Login_Client extends javax.swing.JFrame {
                 Object [] retour = vp.getObject();
                 String mot = (String)retour[0];
                 Voyageur voyageur = new Voyageur((String)retour[0], (boolean)retour[1]);
-                req = new RequeteCONTROLID(RequeteCONTROLID.VERIF_VOYAGEUR, voyageur);
-                req.EnvoieRequete(cliSock);
                 
+                //je dois d'abord encrypter le message
+                byte [] crypted_message = symetrique_facility.encrypte_message(voyageur.voyageur_to_byte(), SecretKey_CYPHER);
+                byte [] authenticate_crypted_message = hmac_facility.authentification(SecretKey_AUTH, crypted_message);
+                //ensuite je dois l'authentifier
+                req = new RequeteCONTROLID();
+                req.setTypeRequete(RequeteCONTROLID.VERIF_VOYAGEUR);
+                req.setData(crypted_message);
+                req.setData_2(authenticate_crypted_message);
+                
+                req.EnvoieRequete(cliSock);
                 rep = new ReponseCONTROLID();
                 rep.RecevoirReponse(cliSock);
-                
-                Voyageur voyageur_recu = new Voyageur();
-                voyageur_recu = (Voyageur)rep.getObjectClasse();
-                //dans le cas ou le voyageur n'existe pas dans la base d edonnée, je met son champs n_reg a "INCONNU"
-                if(!voyageur_recu.getN_REG().equals("INCONNU"))
+                if(rep.getTypeRequete() != ReponseCONTROLID.VOYAGEUR_AUTH_FAIL)
                 {
-                    //si le voyageur existe, je regarde si il est sensé avoir un permis
-                    if(voyageur.isPermis()== true)
+                    Voyageur voyageur_recu = new Voyageur();
+                    //ca c'est le message qui a été crypto par le client
+                    crypted_message = (rep.getData());
+                    //ca c'est le message crypto qui a été hashé par le client
+                    byte[] crypted_message_authenticate_by_serveur = rep.getData_2();
+                    //ce qu'on va faire c'est rehasher le message crypto de ce coté ci et voir si il est egal au messahe hashé par le client
+                    byte [] crypted_message_authenticate_by_me = hmac_facility.authentification(SecretKey_AUTH, crypted_message);
+                    if (MessageDigest.isEqual(crypted_message_authenticate_by_me, crypted_message_authenticate_by_serveur))
                     {
-                        if(voyageur_recu.isPermis()==true)
+                        voyageur_recu.byte_to_voyageur(symetrique_facility.decrypte_message(crypted_message, SecretKey_CYPHER));
+                    
+
+                        //dans le cas ou le voyageur n'existe pas dans la base d edonnée, je met son champs n_reg a "INCONNU"
+                        if(!voyageur_recu.getN_REG().equals("INCONNU"))
                         {
-                            //je verifie si il a bien son permis
-                            JOptionPane.showMessageDialog(null, "Voyageur existant et il a bien son permis", "OK", JOptionPane.INFORMATION_MESSAGE);
+                            //si le voyageur existe, je regarde si il est sensé avoir un permis
+                            if(voyageur.isPermis()== true)
+                            {
+                                if(voyageur_recu.isPermis()==true)
+                                {
+                                    //je verifie si il a bien son permis
+                                    JOptionPane.showMessageDialog(null, "Voyageur existant et il a bien son permis", "OK", JOptionPane.INFORMATION_MESSAGE);
+                                }
+                                else
+                                {
+                                    JOptionPane.showMessageDialog(null, "Le voyageur existe mais il n'a pas son permis", "Pas de permis", JOptionPane.ERROR_MESSAGE);
+                                }
+                            }
+                            else
+                            {
+                                JOptionPane.showMessageDialog(null, "Voyageur existant dans la base de donnée !", "OK", JOptionPane.INFORMATION_MESSAGE);
+                            }
                         }
                         else
                         {
-                            JOptionPane.showMessageDialog(null, "Le voyageur existe mais il n'a pas son permis", "Pas de permis", JOptionPane.ERROR_MESSAGE);
+                            JOptionPane.showMessageDialog(null, "Ce voyageur n'existe dans aucune base de donnée", "Voyageur inconnu !! ", JOptionPane.ERROR_MESSAGE);
                         }
-                    }
-                    else
-                    {
-                        JOptionPane.showMessageDialog(null, "Voyageur existant dans la base de donnée !", "OK", JOptionPane.INFORMATION_MESSAGE);
                     }
                 }
                 else
                 {
-                    JOptionPane.showMessageDialog(null, "Ce voyageur n'existe dans aucune base de donnée", "Voyageur inconnu !! ", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(null, "Problèeme d'authticité du message", "Authicité", JOptionPane.ERROR_MESSAGE);
                 }
-                
                 
                 
                 
@@ -513,8 +552,25 @@ public class Login_Client extends javax.swing.JFrame {
     
     //crypto realisiation du handshake !
     
-    public void handshake()
+    public void handshake() throws CertificateException, IOException, ClassNotFoundException
     {
+        //chiffrement des deux cles symetriques + envoi
+        RequeteCONTROLID req = new RequeteCONTROLID(RequeteCONTROLID.HANDSHAKE, asymetrique_facility.encrypte_message_asymetrique(SecretKey_CYPHER.getEncoded(), PublicKey_Serveur_National));
+        req.EnvoieRequete(cliSock);
+        req = new RequeteCONTROLID(RequeteCONTROLID.HANDSHAKE, asymetrique_facility.encrypte_message_asymetrique(SecretKey_AUTH.getEncoded(), PublicKey_Serveur_National));
+        req.EnvoieRequete(cliSock);
+        
+        ReponseCONTROLID rep = new ReponseCONTROLID();
+        rep.RecevoirReponse(cliSock);
+        
+        if(rep.getTypeRequete() == ReponseCONTROLID.HANDSHAKE_OK)
+        {
+            JOptionPane.showMessageDialog(null, "Handshake OK", "HANDSHAKE", JOptionPane.INFORMATION_MESSAGE);
+        }
+        
+        System.err.println("Clé auth " + SecretKey_AUTH);
+        System.err.println("Clé Cypher " + SecretKey_CYPHER);
+        
         
     }
    

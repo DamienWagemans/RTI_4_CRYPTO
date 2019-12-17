@@ -5,16 +5,14 @@ import java.security.*;
 
 public class hmac_facility 
 {
-    public static byte[] authentification(SecretKey cle, String msg)
+    public static byte[] authentification(SecretKey cle, byte [] data) 
     {
         byte[] hb = null;
         try 
         {
-            byte[] b = msg.getBytes();
-            
             Mac h = Mac.getInstance("HMAC-MD5", "BC");
             h.init(cle);
-            h.update(b);
+            h.update(data);
             hb = h.doFinal();
         } 
         catch (NoSuchAlgorithmException | NoSuchProviderException | InvalidKeyException ex) 

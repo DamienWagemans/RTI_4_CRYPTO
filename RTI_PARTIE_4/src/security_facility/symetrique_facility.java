@@ -23,15 +23,14 @@ public class symetrique_facility
         return cleSecret;
     }
     
-    public static byte[] encrypte_message(String msg, SecretKey cle)
+    public static byte[] encrypte_message(byte [] msgByte, SecretKey cle)
     {
         byte[] msgCrypte = null;
         try 
         {
             Cipher chiffrement = Cipher.getInstance("DES/ECB/PKCS5Padding", "BC");
             chiffrement.init(Cipher.ENCRYPT_MODE, cle);
-            
-            byte[] msgByte = msg.getBytes();
+
             msgCrypte = chiffrement.doFinal(msgByte); 
         } 
         catch (NoSuchAlgorithmException | NoSuchProviderException | NoSuchPaddingException | InvalidKeyException | BadPaddingException | IllegalBlockSizeException ex) 
@@ -42,22 +41,22 @@ public class symetrique_facility
         return msgCrypte;
     }
     
-    public static String decrypte_message(byte[] b, SecretKey cle)
+    public static byte [] decrypte_message(byte[] b, SecretKey cle)
     {
-        String msgFinal = "";
+        byte [] msgDecrypte = null;
         try 
         {
             Cipher chiffrement = Cipher.getInstance("DES/ECB/PKCS5Padding", "BC");
             chiffrement.init(Cipher.DECRYPT_MODE, cle);
             
-            byte[] msgDecrypte = chiffrement.doFinal(b);
-            msgFinal = new String(msgDecrypte);
+            msgDecrypte = chiffrement.doFinal(b);
+            
         } 
         catch (NoSuchAlgorithmException | NoSuchProviderException | NoSuchPaddingException | InvalidKeyException | BadPaddingException | IllegalBlockSizeException ex) 
         {
             System.out.println("Erreur CleSymetrique : " + ex);
         } 
         
-        return msgFinal;
+        return msgDecrypte;
     }  
 }

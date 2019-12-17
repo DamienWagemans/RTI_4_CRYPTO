@@ -5,6 +5,11 @@
  */
 package ClassesCONTROLID;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.Serializable;
 
 /**
@@ -49,5 +54,25 @@ public class Voyageur implements Serializable{
         this.Permis = Permis;
     }
     
+    
+        
+    public byte [] voyageur_to_byte() throws IOException
+    {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(bos);
+        oos.writeObject(this);
+        oos.flush();
+        byte [] data = bos.toByteArray();
+        return data;
+    }
+    
+    public void byte_to_voyageur (byte [] b) throws IOException, ClassNotFoundException
+    {
+        ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(b));
+        Voyageur v = (Voyageur) in.readObject();
+        this.N_REG = v.getN_REG();
+        this.Permis = v.isPermis();
+        in.close();
+    }
     
 }
