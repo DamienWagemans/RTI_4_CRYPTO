@@ -7,15 +7,22 @@ package Serveur_National;
 
 import Serveur_National.ListeTaches;
 import Serveur_National.ThreadServeur;
+import divers.Config_Applic;
 import static divers.Config_Applic.pathConfig;
 import divers.Persistance_Properties;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.Socket;
+import java.security.KeyManagementException;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
 import java.sql.SQLException;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.net.ssl.SSLSocket;
 import javax.swing.JOptionPane;
 
 /**
@@ -33,6 +40,8 @@ public class FenAppServeur extends javax.swing.JFrame {
     
     private int port_RegInternat;
     private String ip_RegInternat;
+    
+    public int SSL = 0;
     /**
      * Creates new form FenAppServeur
      */
@@ -55,6 +64,8 @@ public class FenAppServeur extends javax.swing.JFrame {
         
         ip_RegInternat = myProperties.getProperty("ip_RegInternat");
         port_RegInternat = Integer.parseInt(myProperties.getProperty("port_RegInternat"));
+        
+        SSL = Integer.parseInt(myProperties.getProperty("SSL"));
     }
 
     /**
@@ -213,14 +224,36 @@ public class FenAppServeur extends javax.swing.JFrame {
         System.out.println("serveur / Demarrage du serveur / main");
         Socket Sock;
         try {
-            //socket vers le serveur carte
-            Sock = new Socket(ip_RegInternat, port_RegInternat);
-            ts = new ThreadServeur(port, nbr_client, new ListeTaches(), Sock);
+            //socket vers le serveur reginternat
+            //creation d'une socket securtisée
+            if(SSL == 1)
+            {
+                System.out.println("Mode SSL");
+                Properties key = Persistance_Properties.LoadProp(Config_Applic.pathKEYstore_Serveur_National);
+                SSLSocket sslsock= security_facility.SSL_facility.create_SSL_client_socket(key.getProperty("type_keystore"), key.getProperty("chemin_keystore"), key.getProperty("mdp_keystore"),key.getProperty("mdp_keystore"), port_RegInternat, ip_RegInternat);
+                ts = new ThreadServeur(port, nbr_client, new ListeTaches(), sslsock);
+            }
+            else
+            {
+                System.out.println("Mode Insecure");
+                Sock = new Socket(ip_RegInternat, port_RegInternat);
+                ts = new ThreadServeur(port, nbr_client, new ListeTaches(), Sock);
+            }
+            
+            
             System.out.println("serveur / Connexion serveur carte / main");
             ts.start();
         } catch (IOException ex) {
-            JOptionPane.showMessageDialog(null, "Connexion au serveur carte impossible", "Serveur carte erreur", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(null, "Connexion au serveur international", "Serveur internat erreur", JOptionPane.ERROR_MESSAGE);
         } catch (CertificateException ex) {
+            Logger.getLogger(FenAppServeur.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (KeyStoreException ex) {
+            Logger.getLogger(FenAppServeur.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (NoSuchAlgorithmException ex) {
+            Logger.getLogger(FenAppServeur.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (UnrecoverableKeyException ex) {
+            Logger.getLogger(FenAppServeur.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (KeyManagementException ex) {
             Logger.getLogger(FenAppServeur.class.getName()).log(Level.SEVERE, null, ex);
         }
         

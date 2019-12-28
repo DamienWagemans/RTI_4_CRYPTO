@@ -26,6 +26,7 @@ public class Serveur_International extends javax.swing.JFrame {
     private int nbr_client;
     private String IP;
     ThreadServeur ts;
+    public int SSL;
     
 
     
@@ -49,8 +50,10 @@ public class Serveur_International extends javax.swing.JFrame {
         IP = myProperties.getProperty("ip");
         jLabel_addresse_ip.setText(IP);
         
+        SSL = Integer.parseInt(myProperties.getProperty("SSL"));
         
-        ts = new ThreadServeur(port, nbr_client); 
+        
+        ts = new ThreadServeur(port, nbr_client, SSL); 
         ts.start();
         
     }
